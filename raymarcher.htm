@@ -2,16 +2,31 @@
 <html>
 	<head>
 		<meta charset="utf-8">
+		<meta name="description" content="Raymarcher made in WebGL with three.js">
 		<title>Raymarching Demo</title>
 		<style>
-			body { 
-				margin: 0; 
-				overscroll-behavior: none;
-			}
+			
 		</style>
 	</head>
 	<body>
+		<div id="info">WASD move, R|F up | down, Q|E roll, up|down pitch, left|right yaw |||| 1 to 5 change scene </div>
 		<div id="container"></div>
-		<script type="module" src="./raymarcher.js"></script>
+		<script type="module" src="./js/raymarcher.js"></script>
 	</body>
 </html>
+
+<style>
+body { 
+	margin: 0; 
+	overscroll-behavior: none;
+}
+#info {
+	position: absolute;
+	top: 10px;
+	width: 100%;
+	text-align: center;
+	z-index: 100;
+	display:block;
+}
+
+</style>

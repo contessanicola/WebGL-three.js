@@ -1,15 +1,14 @@
-import * as THREE from 'https://cdn.skypack.dev/three@0.130.0';
-import { OrbitControls } from 'https://cdn.skypack.dev/three@0.130.0/examples/jsm/controls/OrbitControls.js';
-import { FlyControls } from 'https://cdn.skypack.dev/three@0.130.0/examples/jsm/controls/FlyControls.js';
+import * as THREE from './three.js-master/src/Three.js';
+//import { OrbitControls } from 'https://cdn.skypack.dev/three@0.130.0/examples/jsm/controls/OrbitControls.js';
+import { FlyControls } from './three.js-master/examples/jsm/controls/FlyControls.js';
 
 export default class Draw {
 	constructor(){
 		this.renderer = new THREE.WebGLRenderer();
 		this.renderer.setSize(window.innerWidth,window.innerHeight);
 		document.getElementById('container').appendChild(this.renderer.domElement);
-
+		
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight,1,100)
-
 
 		this.camera.position.x = 0;
 		this.camera.position.y = 0;
@@ -18,19 +17,18 @@ export default class Draw {
 		this.scene = new THREE.Scene();
 		this.scene.background = new THREE.Color(0xFFFF00);
 		this.clock = new THREE.Clock();
-
+		
 		this.addQuad();
 		this.time = 0;
-		//this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 
 		this.controls = new FlyControls(this.camera, this.renderer.domElement);
 		this.controls.movementSpeed = 1;
 		this.controls.domElement = this.renderer.domElement;
-		this.controls.rollSpeed = 0.20;
+		this.controls.rollSpeed = 0.40;
 		this.controls.autoForward = false;
 		this.controls.dragToLook = true;
-
-
+		this.test = 1;
+		document.addEventListener("keydown", this.onDocumentKeyDown.bind(this), false);
 		//this.resize();
 		this.render();
 		//this.setupResize();
@@ -38,18 +36,19 @@ export default class Draw {
 
 	addQuad(){
 		this.geometry = new THREE.PlaneGeometry(2,2);
-		this.material = new THREE.MeshNormalMaterial({side: THREE.DoubleSide});
-
-		this.material = new THREE.ShaderMaterial({
-			vertexShader:  `
+		this.shaderMaterial = new THREE.ShaderMaterial({
+			vertexShader:  
+			`
 			void main() {
 				//gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); 
 				gl_Position = vec4(position, 1.0); 
 			}
-		  `,
-			fragmentShader: `
+			`,
+			fragmentShader: 
+			`
 			uniform vec2 iResolution;
 			uniform float iTime;
+			uniform int iScene;
 			// = object.matrixWorld
 			uniform mat4 modelMatrix;
 			// = camera.matrixWorldInverse * object.matrixWorld
@@ -65,8 +64,8 @@ export default class Draw {
 			#define LIGHT_DIRECTION vec3(0.36, 0.48, 0.80)
 
 			#define MAX_DIST 500.
-			#define MIN_DIST 1e-5
-			#define MAX_MARCHES 1000
+			#define MIN_DIST 1e-4
+			#define MAX_MARCHES 500
 			#define SUN_SIZE 0.001
 			#define SUN_SHARPNESS 1.5
 			#define POWER 8.
@@ -87,7 +86,53 @@ export default class Draw {
 
 			float sdPlane(vec3 p){
 				return p.y;
-			} 		
+			} 	
+			
+			vec3 rotateY(vec3 p, float alpha){
+				float px=p.x;
+				float c=cos(alpha);
+				float s=sin(alpha);
+				
+				 p.x=c*px-s*p.z;
+				p.z=s*px+c*p.z;
+				
+				return p;
+			}
+			
+			vec3 rotateX(vec3 p, float alpha){
+				float py=p.y;
+				float c=cos(alpha);
+				float s=sin(alpha);
+				
+				 p.y=c*py-s*p.z;
+				p.z=s*py+c*p.z;
+				
+				return p;
+			}
+
+			float sdMenger(vec3 p){ //https://www.shadertoy.com/view/wtfcWN by flo72
+				float size=2.;
+				p.z -=3.;  
+				//p=rotateY(p,iTime*.5);
+				vec3[] s = vec3[](vec3(1,1,1),vec3(1,1,0));
+				
+				for(int iter=0;iter<5;++iter){
+					float alpha=(sin(iTime*0.1)+1.)  ; 
+					p=rotateY(p,alpha);
+					//float beta=(sin(iTime*0.1)+1.)  ; 
+					//p=rotateX(p,beta);
+				   
+					p=abs(p);
+					if(p.y > p.x) p.yx = p.xy;
+					if(p.z > p.y) p.zy = p.yz;
+					
+					if(p.z > .5*size) p -= size*s[0];
+					else p -= size*s[1];
+					size /=3.;
+					
+				}
+				return sdBox(p,vec3(1.5*size));
+			}
 			
 			float sdMandelbulb(vec3 p) {
 				vec3 z = p;
@@ -99,7 +144,7 @@ export default class Draw {
 					power = (sin(iTime*0.1)+1.) * 8./2. + 1.;
 				float dr = 1.0;
 				float r = 0.0;
-				for (int i = 0; i < 30 ; i++) {
+				for (int i = 0; i < 15 ; i++) {
 					r = length(z);
 					if (r>2.) break;	
 					// convert to polar coordinates
@@ -127,17 +172,32 @@ export default class Draw {
 			}
 
 			float distanceField(vec3 p){
-				/*float Sphere = sdSphere(p-vec3(0.0,0.0,0.0),2.0);
-				float Plane = sdPlane(p-vec3(0.0,-2.0,0.0));
-				return min(Sphere,Plane);*/
+				if(iScene == 1){
+					float Menger = sdMenger(p-vec3(0.0,0.0,-15.));
+					return Menger;					
+				}
+				else if(iScene == 2){
+					float Box = sdBox(p,vec3(1.5));
+					if(Box > 0.1) return Box;
+					float Mandelbulb = sdMandelbulb(p);
+					return Mandelbulb;				
+				}
+				else if(iScene == 3){
+					float SphereMod = sdSphereMod(p,2.0);
+        			return SphereMod;
+					
+				}
+				else if(iScene == 4){
+					float Sphere = sdSphere(p-vec3(0.0,0.0,0.0),2.0);
+					float Plane = sdPlane(p-vec3(0.0,-2.0,0.0));
+					return min(Sphere,Plane);
+				}
+				else if(iScene == 5){
+				}
 
-				//float SphereMod = sdSphereMod(p,2.0);
-        		//return SphereMod;
+				/**/
 
-				float Box = sdBox(p,vec3(1.5));
-				if(Box > 0.1) return Box;
-				float Mandelbulb = sdMandelbulb(p);
-				return Mandelbulb;
+				
 			}
 
 			vec3 calcNormal(vec3 p, float h){ // https://www.iquilezles.org/www/articles/normalsSDF/normalsSDF.htm
@@ -147,7 +207,7 @@ export default class Draw {
 								  k.yxy*distanceField( p + k.yxy *h) + 
 								  k.xxx*distanceField( p + k.xxx *h) );
 			}
-
+			/*
 			float softShadow(in vec3 ro, in vec3 rd, float mint, float maxt, float k, float min_dist){ //https://www.iquilezles.org/www/articles/rmshadows/rmshadows.htm
 				float res_sha = 1.0;
 				float ph = 1e10;
@@ -163,7 +223,22 @@ export default class Draw {
 				}
 				res_sha = clamp( res_sha, 0.0, 1.0 );
 				return res_sha*res_sha*(3.0-2.0*res_sha);
-				//return res;
+				//return res_sha;
+			}*/
+
+			float shadow( in vec3 ro, in vec3 rd, float mint, float maxt, float k, float min_dist)
+			{
+				float res_sha = 1.0;
+				for( float t=mint; t<maxt; )
+				{
+					float h = distanceField(ro + rd*t);
+					if( h<min_dist )
+						return 0.0;
+						res_sha = min( res_sha, k*h/t );
+					t += h;
+				}
+				res_sha = clamp( res_sha, 0.0, 1.0 );
+				return res_sha*res_sha*(3.0-2.0*res_sha);
 			}
 			
 			float ambientOcclusion(vec3 p, vec3 n){
@@ -211,7 +286,10 @@ export default class Draw {
 				if(d < min_dist){
 					vec3 n = calcNormal(p,min_dist);
 					float ks = 1.0;
-					col.xyz = vec3(0.01);
+					if(iScene == 1)
+						col.xyz = vec3(0.2125, 0.1875, 0.09);
+					else
+						col.xyz = vec3(0.01);
 					col.xyz = mix( col.xyz, vec3(0.10,0.20,0.30), clamp(mandelbulbTrap.y,0.0,1.0) );
 					col.xyz = mix( col.xyz, vec3(0.02,0.10,0.30), clamp(mandelbulbTrap.z*mandelbulbTrap.z,0.0,1.0) );
 					col.xyz = mix( col.xyz, vec3(0.30,0.10,0.02), clamp(pow(mandelbulbTrap.w,6.0),0.0,1.0) );
@@ -221,13 +299,31 @@ export default class Draw {
 					vec3 sky_light = (BACKGROUND_COLOR*0.10)* clamp(0.5+0.5*dot(n,vec3(0.,1.,0.)), 0., 1.);
 					vec3 bounce_light = (vec3(.06,.063,.07))* clamp(0.5+0.5*dot(n,vec3(0.,-1.,0.)), 0., 1.);
 
+
+					vec3 sun_shadow;
+					if(iScene == 2 || iScene == 3){
+						sun_shadow = vec3(1.);
+					}
+					else{
+						sun_shadow = LIGHT_COLOR * shadow(p, LIGHT_DIRECTION, 0.1, 30.0, 12.0, min_dist);
+					}
+					
+					
+					//vec3 ref = reflect(rd, n);
+					vec3 sun_half = normalize(LIGHT_DIRECTION-rd);
+					vec3 sun_specular = ks*pow(clamp(dot(n,sun_half),0.0,1.0),8.0)*sun_light*(0.04+0.96*pow(clamp(1.0+dot(sun_half,rd),0.0,1.0),5.0));
+
 					float ao = ambientOcclusion(p,n); 
 
+					
+					
 					vec3 sum = vec3(0.0);
-					sum += 5. * sun_light;        
-					sum += 2. * sky_light * ao;   
-					sum += 1.5 * bounce_light * ao;   
+					sum += 8. * sun_light * sun_shadow;  
+					sum += 2. * sky_light * ao;     
+					sum += 4.0 * bounce_light * ao;    
 					col.xyz *= sum;
+
+					col.xyz += sun_specular * LIGHT_COLOR  * 8. * sun_shadow;
 				}
 				else {
 					vec3 sky = BACKGROUND_COLOR - max(rd.y,0.0)*0.5;
@@ -241,7 +337,7 @@ export default class Draw {
 			} 
 
 			void main() {
-				res = 1.0 / 2160.0;
+				res = 1.0 / 1080.0;
 				vec4 col = vec4(1.0);
 				vec2 uv = (gl_FragCoord.xy+0.5*(-iResolution.xy))/iResolution.y;
 				vec3 ro = vec3(0.0, 0.0, -8.0);
@@ -259,21 +355,39 @@ export default class Draw {
 
 				//gl_FragColor = vec4(uv,0.0,1.0);
 			}
-		`,
-			uniforms:{
+			`,
+			uniforms:
+			{
 				iResolution: {value: new THREE.Vector2()},
-				iTime: {value: 1.0}
+				iTime: {value: 1.0},
+				iScene: {value: 1}
 			}
 			
 		})
-
-		this.mesh = new THREE.Mesh(this.geometry,this.material);
-		this.material.uniforms.iResolution.value.x = window.innerWidth;
-		this.material.uniforms.iResolution.value.y = window.innerHeight;
-		this.scene.add(this.mesh);
+		
+		this.shaderMesh = new THREE.Mesh(this.geometry,this.shaderMaterial);
+		this.shaderMesh.frustumCulled = false;
+		this.shaderMaterial.uniforms.iResolution.value.x = window.innerWidth;
+		this.shaderMaterial.uniforms.iResolution.value.y = window.innerHeight;
+		this.scene.add(this.shaderMesh);
 	}
-
-	/*setupResize(){
+	
+	onDocumentKeyDown(event) {
+		var keyCode = event.which;
+		if (keyCode == 49) {
+			this.shaderMaterial.uniforms.iScene.value = 1;	
+		} else if (keyCode == 50) {
+			this.shaderMaterial.uniforms.iScene.value = 2;
+		} else if (keyCode == 51) {
+			this.shaderMaterial.uniforms.iScene.value = 3;
+		} else if (keyCode == 52) {
+			this.shaderMaterial.uniforms.iScene.value = 4;
+		} else if (keyCode == 53) {
+			this.shaderMaterial.uniforms.iScene.value = 5;
+		}
+	}
+/*
+	setupResize(){
 		window.addEventListener("resize", this.resize.bind(this));
 	}
 
@@ -287,14 +401,13 @@ export default class Draw {
 	render(){
 		this.time++;
 		const delta = this.clock.getDelta();
-
 		//this.mesh.rotation.x += 0.01;
-		console.log(this.clock.elapsedTime);
+		//console.log(this.test);
 		this.renderer.render(this.scene,this.camera);
-		this.material.uniforms.iTime.value = this.clock.elapsedTime;
+		this.shaderMaterial.uniforms.iTime.value = this.clock.elapsedTime;
 		window.requestAnimationFrame(this.render.bind(this));
 
-		//this.controls.movementSpeed = 20 * delta;
+		this.controls.movementSpeed = 20 * delta;
 		this.controls.update( delta );
 	}
 
